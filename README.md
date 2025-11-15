@@ -21,34 +21,48 @@ Step 4: Deploy and Test Host the Gradio app locally or on a server. Test with di
 
 ### PROGRAM:
 ```
-import gradio as gr
-import openai
 import os
+import gradio as gr
+from dotenv import load_dotenv
+from text_generation import Client
 
-# Load OpenAI API key securely
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Make sure the environment variable is set
-
-def chat_with_llm(user_input):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": user_input}]
-        )
-        return response["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-# Create Gradio interface
-interface = gr.Interface(
-    fn=chat_with_llm,
-    inputs="text",
-    outputs="text",
-    title="Chat with GPT-4",
-    description="Ask any question and get a response from GPT-4."
+# Load API key
+load_dotenv()
+client = Client(
+    os.environ["HF_API_FALCOM_BASE"],
+    headers={"Authorization": f"Basic {os.environ['HF_API_KEY']}"},
+    timeout=120
 )
 
-# Launch the app
-interface.launch(share="True")
+# Format prompt with chat history
+def format_prompt(message, history):
+    prompt = ""
+    for user, bot in history:
+        prompt += f"User: {user}\nAssistant: {bot}\n"
+    prompt += f"User: {message}\nAssistant:"
+    return prompt
+
+# Respond function
+def respond(message, history):
+    prompt = format_prompt(message, history)
+    bot = client.generate(
+        prompt,
+        max_new_tokens=200,
+        stop_sequences=["User:"]
+    ).generated_text
+    history.append((message, bot))
+    return "", history
+
+# Gradio UI
+with gr.Blocks() as demo:
+    chatbot = gr.Chatbot()
+    msg = gr.Textbox(label="Say something")
+    btn = gr.Button("Submit")
+    btn.click(respond, inputs=[msg, chatbot], outputs=[msg, chatbot])
+    msg.submit(respond, inputs=[msg, chatbot], outputs=[msg, chatbot])
+
+demo.launch(share=True)
+
 ```
 
 ### OUTPUT:
